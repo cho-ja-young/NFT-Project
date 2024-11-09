@@ -1,0 +1,17 @@
+.container {
+    max-width: 600px;
+    margin: 0 auto;
+    font-family: Arial, sans-serif;
+}
+.section {
+    padding: 20px;
+    margin-bottom: 20px;
+    border: 1px solid #ddd;
+}
+.nft-list, .nft-item {
+    margin: 10px 0;
+}
+.mint-form {
+    display: flex;
+    flex-direction: column;
+}
