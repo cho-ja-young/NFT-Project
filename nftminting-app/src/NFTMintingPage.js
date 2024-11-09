@@ -2,8 +2,8 @@ import React, { useState, useEffect } from 'react';
 import Web3 from 'web3';
 import './NFTMintingPage.css';
 
-const contractAddress = "YOUR_CONTRACT_ADDRESS";
-const contractABI = YOUR_CONTRACT_ABI; // Replace with your contract ABI
+const contractAddress = process.env.REACT_APP_CONTRACT_ADDRESS;
+const contractABI = JSON.parse(process.env.REACT_APP_CONTRACT_ABI);
 
 const NFTMintingPage = () => {
     const [account, setAccount] = useState(null);
@@ -56,11 +56,17 @@ const NFTMintingPage = () => {
 
     return (
         <div className="container">
+            {/* Connect Wallet Button in the upper-right corner */}
+            <div className="header">
+                <button className="connect-button" onClick={connectWallet}>
+                    {account ? `Connected: ${account.slice(0, 6)}...${account.slice(-4)}` : "Connect Wallet"}
+                </button>
+            </div>
+
             <h1>NFT Minting Page</h1>
 
-            {/* Wallet Connection */}
+            {/* Wallet Connection Status */}
             <div className="section">
-                <button onClick={connectWallet}>Connect Wallet</button>
                 <p>Wallet Address: {account || "Not connected"}</p>
             </div>
 
@@ -68,11 +74,15 @@ const NFTMintingPage = () => {
             <div className="section">
                 <h2>Your NFT Ownership</h2>
                 <div className="nft-list">
-                    {nfts.length > 0 ? nfts.map((nft, index) => (
-                        <div key={index} className="nft-item">
-                            NFT ID: {nft.id} - Data: {nft.data}
-                        </div>
-                    )) : "No NFTs found"}
+                    {account ? (
+                        nfts.length > 0 ? nfts.map((nft, index) => (
+                            <div key={index} className="nft-item">
+                                NFT ID: {nft.id} - Data: {nft.data}
+                            </div>
+                        )) : "No NFTs found"
+                    ) : (
+                        <p>Please connect your wallet to view your NFTs.</p>
+                    )}
                 </div>
             </div>
 
@@ -88,8 +98,9 @@ const NFTMintingPage = () => {
                         onChange={(e) => setNftData(e.target.value)} 
                         placeholder="Enter NFT metadata (e.g., name, description)" 
                         required 
+                        disabled={!account}
                     />
-                    <button onClick={mintNFT}>Mint NFT</button>
+                    <button onClick={mintNFT} disabled={!account}>Mint NFT</button>
                 </div>
                 <p>{mintStatus}</p>
             </div>
