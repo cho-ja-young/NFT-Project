@@ -1,9 +1,13 @@
+// NFTMintingPage.js
 import React, { useState, useEffect } from 'react';
 import Web3 from 'web3';
+import axios from 'axios';
 import './NFTMintingPage.css';
 
 const contractAddress = process.env.REACT_APP_CONTRACT_ADDRESS;
 const contractABI = JSON.parse(process.env.REACT_APP_CONTRACT_ABI);
+const PINATA_API_KEY = process.env.REACT_APP_PINATA_API_KEY;
+const PINATA_SECRET_KEY = process.env.REACT_APP_PINATA_SECRET_KEY;
 
 const NFTMintingPage = () => {
     const [account, setAccount] = useState(null);
@@ -11,16 +15,17 @@ const NFTMintingPage = () => {
     const [nftData, setNftData] = useState('');
     const [mintStatus, setMintStatus] = useState('');
     const [web3, setWeb3] = useState(null);
-    const [imageUrl, setImageUrl] = useState(null);  // 파일 업로드 상태 추가
+    const [imageUrl, setImageUrl] = useState(null);
+    const [pinataUrl, setPinataUrl] = useState('');
+    const [isModalOpen, setIsModalOpen] = useState(false);
+    const [mintedNFT, setMintedNFT] = useState(null);
 
     useEffect(() => {
-        // Ganache 로컬 네트워크와 연결
         if (window.ethereum) {
             const localWeb3 = new Web3(window.ethereum);
             setWeb3(localWeb3);
-            // MetaMask로 연결 시 Ganache로 네트워크를 설정
             window.ethereum.request({ method: 'eth_chainId' }).then(chainId => {
-                if (chainId !== '0x7a69') {  // Ganache의 기본 체인 ID는 0x7a69 (1337)
+                if (chainId !== '0x7a69') {
                     alert("Please switch to the Ganache network.");
                 }
             });
@@ -31,7 +36,6 @@ const NFTMintingPage = () => {
 
     const connectWallet = async () => {
         try {
-            // MetaMask와 Ganache 네트워크 연결 요청
             const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
             setAccount(accounts[0]);
             loadNFTs(accounts[0]);
@@ -41,17 +45,18 @@ const NFTMintingPage = () => {
     };
 
     const disconnectWallet = () => {
-        setAccount(null);  // 연결 해제
-        setNfts([]);       // NFT 리스트 초기화
-        setMintStatus(''); // 상태 초기화
-        setNftData('');    // 입력 데이터 초기화
-        setImageUrl(null); // 이미지 URL 초기화
+        setAccount(null);
+        setNfts([]);
+        setMintStatus('');
+        setNftData('');
+        setImageUrl(null);
+        setPinataUrl('');
     };
 
     const loadNFTs = async (account) => {
         const contract = new web3.eth.Contract(contractABI, contractAddress);
         try {
-            const nftList = await contract.methods.getNFTsByOwner(account).call(); // Assume this method exists
+            const nftList = await contract.methods.getNFTsByOwner(account).call();
             setNfts(nftList);
         } catch (error) {
             console.error("Failed to load NFTs:", error);
@@ -59,31 +64,67 @@ const NFTMintingPage = () => {
     };
 
     const mintNFT = async () => {
-        if (!nftData || !imageUrl) return alert("Please enter NFT data and upload an image.");
-        const contract = new web3.eth.Contract(contractABI, contractAddress);
+        if (!nftData || !pinataUrl) return alert("Please enter NFT data and upload an image.");
+        setIsModalOpen(true);
+        setMintStatus("Uploading to IPFS...");
 
+        const contract = new web3.eth.Contract(contractABI, contractAddress);
         try {
-            await contract.methods.mintNFT(account, nftData, imageUrl).send({ from: account });
+            setMintStatus("Calling smart contract...");
+            const response = await contract.methods.mintNFT(account, nftData, pinataUrl).send({ from: account });
+            const tokenId = response.events.Transfer.returnValues.tokenId;
             setMintStatus("NFT minted successfully!");
+
+            setMintedNFT({
+                name: nftData,
+                description: "NFT description here",
+                tokenId,
+                owner: account,
+                imageUrl: pinataUrl
+            });
             loadNFTs(account);
         } catch (error) {
             console.error("Minting failed:", error);
             setMintStatus("NFT minting failed.");
+        } finally {
+            setTimeout(() => {
+                setMintStatus('');
+            }, 3000);
         }
     };
 
-    // 이미지 업로드 핸들러
-    const handleImageUpload = (event) => {
+    const handleImageUpload = async (event) => {
         const file = event.target.files[0];
         if (file) {
-            const imageUrl = URL.createObjectURL(file);  // 로컬 파일 경로
-            setImageUrl(imageUrl);
+            try {
+                const formData = new FormData();
+                formData.append('file', file);
+                const config = {
+                    headers: {
+                        'pinata_api_key': PINATA_API_KEY,
+                        'pinata_secret_api_key': PINATA_SECRET_KEY,
+                    }
+                };
+                const response = await axios.post('https://api.pinata.cloud/pinning/pinFileToIPFS', formData, config);
+                const imageUrl = `https://gateway.pinata.cloud/ipfs/${response.data.IpfsHash}`;
+                setPinataUrl(imageUrl);
+                setImageUrl(URL.createObjectURL(file));
+                setMintStatus("Image uploaded to IPFS successfully!");
+            } catch (error) {
+                console.error("File upload failed:", error);
+                setMintStatus("Image upload failed.");
+            }
         }
+    };
+
+    const closeModal = () => {
+        setIsModalOpen(false);
+        setMintedNFT(null);
+        window.location.reload(); // Reloads the page
     };
 
     return (
         <div className="container">
-            {/* Connect / Disconnect Wallet Button in the upper-right corner */}
             <div className="header">
                 <button className="connect-button" onClick={account ? disconnectWallet : connectWallet}>
                     {account ? `Disconnect Wallet` : `Connect Wallet`}
@@ -92,12 +133,10 @@ const NFTMintingPage = () => {
 
             <h1>NFT Minting Page</h1>
 
-            {/* Wallet Connection Status */}
             <div className="section">
                 <p>Wallet Address: {account || "Not connected"}</p>
             </div>
 
-            {/* NFT Ownership Section */}
             <div className="section">
                 <h2>Your NFT Ownership</h2>
                 <div className="nft-list">
@@ -113,7 +152,6 @@ const NFTMintingPage = () => {
                 </div>
             </div>
 
-            {/* Mint New NFT Section */}
             <div className="section">
                 <h2>Register New NFT</h2>
                 <div className="mint-form">
@@ -127,7 +165,7 @@ const NFTMintingPage = () => {
                         required 
                         disabled={!account}
                     />
-                    <label htmlFor="imageUpload">Upload Image URL:</label>
+                    <label htmlFor="imageUpload">Upload Image:</label>
                     <input 
                         type="file" 
                         id="imageUpload" 
@@ -140,6 +178,20 @@ const NFTMintingPage = () => {
                 </div>
                 <p>{mintStatus}</p>
             </div>
+
+            {isModalOpen && mintedNFT && (
+                <div className="modal">
+                    <div className="modal-content">
+                        <h3>Minted NFT Details</h3>
+                        <p><strong>Name:</strong> {mintedNFT.name}</p>
+                        <p><strong>Description:</strong> {mintedNFT.description}</p>
+                        <p><strong>Token ID:</strong> {mintedNFT.tokenId}</p>
+                        <p><strong>Owner:</strong> {mintedNFT.owner}</p>
+                        <img src={mintedNFT.imageUrl} alt="Minted NFT" style={{ width: "100px", marginTop: "10px" }} />
+                        <button onClick={closeModal}>Confirm</button>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
