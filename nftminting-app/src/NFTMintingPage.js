@@ -6,7 +6,6 @@ import './NFTMintingPage.css';
 
 const contractAddress = process.env.REACT_APP_CONTRACT_ADDRESS;
 const contractABI = JSON.parse(process.env.REACT_APP_CONTRACT_ABI);
-
 const PINATA_API_KEY = process.env.REACT_APP_PINATA_API_KEY;
 const PINATA_SECRET_KEY = process.env.REACT_APP_PINATA_SECRET_KEY;
 
@@ -19,6 +18,7 @@ const NFTMintingPage = () => {
     const [imageUrl, setImageUrl] = useState(null);
     const [pinataUrl, setPinataUrl] = useState('');
     const [isModalOpen, setIsModalOpen] = useState(false);
+    const [mintedNFT, setMintedNFT] = useState(null);
 
     useEffect(() => {
         if (window.ethereum) {
@@ -71,17 +71,25 @@ const NFTMintingPage = () => {
         const contract = new web3.eth.Contract(contractABI, contractAddress);
         try {
             setMintStatus("Calling smart contract...");
-            await contract.methods.mintNFT(account, nftData, pinataUrl).send({ from: account });
+            const response = await contract.methods.mintNFT(account, nftData, pinataUrl).send({ from: account });
+            const tokenId = response.events.Transfer.returnValues.tokenId;
             setMintStatus("NFT minted successfully!");
+
+            setMintedNFT({
+                name: nftData,
+                description: "NFT description here",
+                tokenId,
+                owner: account,
+                imageUrl: pinataUrl
+            });
             loadNFTs(account);
         } catch (error) {
             console.error("Minting failed:", error);
             setMintStatus("NFT minting failed.");
         } finally {
             setTimeout(() => {
-                setIsModalOpen(false);
                 setMintStatus('');
-            }, 3000); // 일정 시간 후 팝업을 닫음
+            }, 3000);
         }
     };
 
@@ -91,14 +99,12 @@ const NFTMintingPage = () => {
             try {
                 const formData = new FormData();
                 formData.append('file', file);
-
                 const config = {
                     headers: {
                         'pinata_api_key': PINATA_API_KEY,
                         'pinata_secret_api_key': PINATA_SECRET_KEY,
                     }
                 };
-
                 const response = await axios.post('https://api.pinata.cloud/pinning/pinFileToIPFS', formData, config);
                 const imageUrl = `https://gateway.pinata.cloud/ipfs/${response.data.IpfsHash}`;
                 setPinataUrl(imageUrl);
@@ -109,6 +115,12 @@ const NFTMintingPage = () => {
                 setMintStatus("Image upload failed.");
             }
         }
+    };
+
+    const closeModal = () => {
+        setIsModalOpen(false);
+        setMintedNFT(null);
+        window.location.reload(); // Reloads the page
     };
 
     return (
@@ -167,11 +179,16 @@ const NFTMintingPage = () => {
                 <p>{mintStatus}</p>
             </div>
 
-            {/* Inner Pop-up Modal */}
-            {isModalOpen && (
+            {isModalOpen && mintedNFT && (
                 <div className="modal">
                     <div className="modal-content">
-                        <p>{mintStatus}</p>
+                        <h3>Minted NFT Details</h3>
+                        <p><strong>Name:</strong> {mintedNFT.name}</p>
+                        <p><strong>Description:</strong> {mintedNFT.description}</p>
+                        <p><strong>Token ID:</strong> {mintedNFT.tokenId}</p>
+                        <p><strong>Owner:</strong> {mintedNFT.owner}</p>
+                        <img src={mintedNFT.imageUrl} alt="Minted NFT" style={{ width: "100px", marginTop: "10px" }} />
+                        <button onClick={closeModal}>Confirm</button>
                     </div>
                 </div>
             )}
