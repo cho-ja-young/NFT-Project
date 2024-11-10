@@ -1,3 +1,4 @@
+// NFTMintingPage.js
 import React, { useState, useEffect } from 'react';
 import Web3 from 'web3';
 import axios from 'axios';
@@ -6,7 +7,6 @@ import './NFTMintingPage.css';
 const contractAddress = process.env.REACT_APP_CONTRACT_ADDRESS;
 const contractABI = JSON.parse(process.env.REACT_APP_CONTRACT_ABI);
 
-// Pinata API settings
 const PINATA_API_KEY = process.env.REACT_APP_PINATA_API_KEY;
 const PINATA_SECRET_KEY = process.env.REACT_APP_PINATA_SECRET_KEY;
 
@@ -16,15 +16,16 @@ const NFTMintingPage = () => {
     const [nftData, setNftData] = useState('');
     const [mintStatus, setMintStatus] = useState('');
     const [web3, setWeb3] = useState(null);
-    const [imageUrl, setImageUrl] = useState(null);  // 파일 업로드 상태 추가
-    const [pinataUrl, setPinataUrl] = useState('');  // IPFS URL 저장
+    const [imageUrl, setImageUrl] = useState(null);
+    const [pinataUrl, setPinataUrl] = useState('');
+    const [isModalOpen, setIsModalOpen] = useState(false);
 
     useEffect(() => {
         if (window.ethereum) {
             const localWeb3 = new Web3(window.ethereum);
             setWeb3(localWeb3);
             window.ethereum.request({ method: 'eth_chainId' }).then(chainId => {
-                if (chainId !== '0x7a69') {  // Ganache의 기본 체인 ID는 0x7a69 (1337)
+                if (chainId !== '0x7a69') {
                     alert("Please switch to the Ganache network.");
                 }
             });
@@ -64,19 +65,26 @@ const NFTMintingPage = () => {
 
     const mintNFT = async () => {
         if (!nftData || !pinataUrl) return alert("Please enter NFT data and upload an image.");
-        const contract = new web3.eth.Contract(contractABI, contractAddress);
+        setIsModalOpen(true);
+        setMintStatus("Uploading to IPFS...");
 
+        const contract = new web3.eth.Contract(contractABI, contractAddress);
         try {
+            setMintStatus("Calling smart contract...");
             await contract.methods.mintNFT(account, nftData, pinataUrl).send({ from: account });
             setMintStatus("NFT minted successfully!");
             loadNFTs(account);
         } catch (error) {
             console.error("Minting failed:", error);
             setMintStatus("NFT minting failed.");
+        } finally {
+            setTimeout(() => {
+                setIsModalOpen(false);
+                setMintStatus('');
+            }, 3000); // 일정 시간 후 팝업을 닫음
         }
     };
 
-    // 이미지 업로드 및 Pinata에 파일 업로드
     const handleImageUpload = async (event) => {
         const file = event.target.files[0];
         if (file) {
@@ -84,7 +92,6 @@ const NFTMintingPage = () => {
                 const formData = new FormData();
                 formData.append('file', file);
 
-                // Pinata API 요청 설정
                 const config = {
                     headers: {
                         'pinata_api_key': PINATA_API_KEY,
@@ -92,13 +99,14 @@ const NFTMintingPage = () => {
                     }
                 };
 
-                // Pinata에 파일 업로드
                 const response = await axios.post('https://api.pinata.cloud/pinning/pinFileToIPFS', formData, config);
                 const imageUrl = `https://gateway.pinata.cloud/ipfs/${response.data.IpfsHash}`;
-                setPinataUrl(imageUrl);  // Pinata URL을 저장
-                setImageUrl(URL.createObjectURL(file));  // 로컬 미리보기
+                setPinataUrl(imageUrl);
+                setImageUrl(URL.createObjectURL(file));
+                setMintStatus("Image uploaded to IPFS successfully!");
             } catch (error) {
                 console.error("File upload failed:", error);
+                setMintStatus("Image upload failed.");
             }
         }
     };
@@ -158,6 +166,15 @@ const NFTMintingPage = () => {
                 </div>
                 <p>{mintStatus}</p>
             </div>
+
+            {/* Inner Pop-up Modal */}
+            {isModalOpen && (
+                <div className="modal">
+                    <div className="modal-content">
+                        <p>{mintStatus}</p>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
